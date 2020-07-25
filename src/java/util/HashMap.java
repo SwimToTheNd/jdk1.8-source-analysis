@@ -232,6 +232,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * The default initial capacity - MUST be a power of two.
+     * Node数组默认容量大小 2^4= 16
      */
     static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
@@ -239,11 +240,13 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * The maximum capacity, used if a higher value is implicitly specified
      * by either of the constructors with arguments.
      * MUST be a power of two <= 1<<30.
+     * Node数组最大容量 2^30
      */
     static final int MAXIMUM_CAPACITY = 1 << 30;
 
     /**
      * The load factor used when none specified in constructor.
+     * 默认负载因子
      */
     static final float DEFAULT_LOAD_FACTOR = 0.75f;
 
@@ -254,6 +257,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * than 2 and should be at least 8 to mesh with assumptions in
      * tree removal about conversion back to plain bins upon
      * shrinkage.
+     * 链表的树化阈值 当链表至少有8个节点时，转化为树。
      */
     static final int TREEIFY_THRESHOLD = 8;
 
@@ -269,6 +273,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * (Otherwise the table is resized if too many nodes in a bin.)
      * Should be at least 4 * TREEIFY_THRESHOLD to avoid conflicts
      * between resizing and treeification thresholds.
+     *
+     * Node数组的容量最小达到64时，链表可以被树化。
      */
     static final int MIN_TREEIFY_CAPACITY = 64;
 
@@ -277,10 +283,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * TreeNode subclass, and in LinkedHashMap for its Entry subclass.)
      */
     static class Node<K,V> implements Map.Entry<K,V> {
-        final int hash;
+        final int hash; // hashcode进过hash函数扰动后得到的值
         final K key;
         V value;
-        Node<K,V> next;
+        Node<K,V> next; //链表中下一个Node节点的引用
 
         Node(int hash, K key, V value, Node<K,V> next) {
             this.hash = hash;
@@ -333,6 +339,13 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * cheapest possible way to reduce systematic lossage, as well as
      * to incorporate impact of the highest bits that would otherwise
      * never be used in index calculations because of table bounds.
+     *
+     * （hashcode为int类型，占4个字节，32位。）
+     * 将hashcode 异或 hashcode无符号右移16位后的值，目的是为了让key的hashcode的高16位参与到hash值中。 保留高16位，并让高16位与低16位进行异或计算
+     *
+     * key.hashcode = ‭00000011 01100010 11010110 01101101‬
+     * h>>>16       = 00000000 00000000 ‭00000011 01100010
+     * h ^ h>>>16   = 00000011 01100010 11010101 00001111
      */
     static final int hash(Object key) {
         int h;
@@ -374,6 +387,19 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * Returns a power of two size for the given target capacity.
+     * cap = 10
+     * n = 9
+     * n       = 00000000 00000000 0000000 00001001
+     * n>>>1   = 00000000 00000000 0000000 00000100
+     * n|n>>>1 = 00000000 00000000 0000000 00001101
+     * n>>>2   = 00000000 00000000 0000000 00000011
+     * n|n>>>2 = 00000000 00000000 0000000 00001111
+     * n>>>4   = 00000000 00000000 0000000 00000000
+     * n|n>>>4 = 00000000 00000000 0000000 00001111
+     * n = 15
+     * return n+1 = 16
+     * 无符号位右移后或操作使得n-1的高位1后面全为1，结果+1为10000。高位为1，低位全部为1，必然为2的幂
+     * 如果不减1结果将大一倍
      */
     static final int tableSizeFor(int cap) {
         int n = cap - 1;
@@ -392,6 +418,9 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * necessary. When allocated, length is always a power of two.
      * (We also tolerate length zero in some operations to allow
      * bootstrapping mechanics that are currently not needed.)
+     * Node数组，再第一次使用时被初始化（put）,在必要的时候进行扩容。
+     * 数组长度是2的幂：当前数据长度为的2幂时，key的下标路由算法hash&(length-1)等价于hash%length。
+     *
      */
     transient Node<K,V>[] table;
 
@@ -403,6 +432,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * The number of key-value mappings contained in this map.
+     * HashMap存在的键值对的个数
      */
     transient int size;
 
@@ -412,12 +442,17 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * the HashMap or otherwise modify its internal structure (e.g.,
      * rehash).  This field is used to make iterators on Collection-views of
      * the HashMap fail-fast.  (See ConcurrentModificationException).
+     * 记录HashMap结构发生改变的次数，不包括replace()。
+     * 便于集合的fail-fast错误机制：当多个线程操作同一个集合时会触发fail-fast事件，通过modCount是否改变来看集合是否被其他线程改动过。
+     * 例如：当某一个线程A通过iterator去遍历某集合的过程中，若该集合的内容被其他线程所改变了；
+     * 那么线程A访问集合时，就会抛出ConcurrentModificationException异常，产生fail-fast事件。
      */
     transient int modCount;
 
     /**
      * The next size value at which to resize (capacity * load factor).
-     *
+     * Node数组扩容的阈值 size >= capacity * load factor
+     * 调用resize方法时，将会把threshold设置为capacity * load factor，初始构造函数会为initalCapacity
      * @serial
      */
     // (The javadoc description is true upon serialization.
@@ -428,7 +463,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * The load factor for the hash table.
-     *
+     * 负载因子
      * @serial
      */
     final float loadFactor;
@@ -454,7 +489,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             throw new IllegalArgumentException("Illegal load factor: " +
                                                loadFactor);
         this.loadFactor = loadFactor;
-        this.threshold = tableSizeFor(initialCapacity);
+        this.threshold = tableSizeFor(initialCapacity);  // 将Node数组的长度设置为2的幂
     }
 
     /**
@@ -493,7 +528,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     /**
      * Implements Map.putAll and Map constructor
      *
-     * @param m the map
+     * @param m the map  源HashMap
      * @param evict false when initially constructing this map, else
      * true (relayed to method afterNodeInsertion).
      */
@@ -600,6 +635,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * Associates the specified value with the specified key in this map.
      * If the map previously contained a mapping for the key, the old
      * value is replaced.
+     * 将指定的key和value在hashMap中建立映射，如果已经存在key，则将key对应的旧value替换成新值
      *
      * @param key key with which the specified value is to be associated
      * @param value value to be associated with the specified key
@@ -609,16 +645,17 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      *         previously associated <tt>null</tt> with <tt>key</tt>.)
      */
     public V put(K key, V value) {
+        // 调用hash函数计算hash值
         return putVal(hash(key), key, value, false, true);
     }
 
     /**
      * Implements Map.put and related methods
      *
-     * @param hash hash for key
+     * @param hash hash for key 经过hash函数处理过的hash值
      * @param key the key
      * @param value the value to put
-     * @param onlyIfAbsent if true, don't change existing value
+     * @param onlyIfAbsent if true, don't change existing value 如果为true不改已经存在的key对应的value值
      * @param evict if false, the table is in creation mode.
      * @return previous value, or null if none
      */
@@ -626,30 +663,48 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                    boolean evict) {
         Node<K,V>[] tab; Node<K,V> p; int n, i;
         if ((tab = table) == null || (n = tab.length) == 0)
-            n = (tab = resize()).length;
+            n = (tab = resize()).length; // 第一次使用，通过resize将Node数组初始化
+
+        // 第一种情况：p为空，hash对应的Node数组下标的值为null时，槽位为空，未被占用，new一个Node节点，放到该槽位中
         if ((p = tab[i = (n - 1) & hash]) == null)
             tab[i] = newNode(hash, key, value, null);
+
+        // hash对应的Node数组下标中已经有值了
         else {
             Node<K,V> e; K k;
+            // 第二种情况：p不为空，找到的数组槽位存放的Node对象的key和要put的key一样，记录该槽位下Node对象的引用到e
+            // Node对象的hash值与key的hash值相等且（key引用的地址一样或equals返回为true）
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
                 e = p;
+
+            // 第三种情况：p不为空，数组槽位存放的Node对象的key与要put的key不一样，需要从链表或红黑树中搜寻
+            // 如果Node对象为TreeNode，说明链表已经转化为红黑树
             else if (p instanceof TreeNode)
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+
+            // 第四种情况：p不为空，通过遍历Node链表查询有相同key的Node对象
             else {
-                for (int binCount = 0; ; ++binCount) {
+                for (int binCount = 0; ; ++binCount) { // binCount记录了链表的长度
+
+                    // 找到了链尾，即在遍历中没有找到，new一个新的Node节点添加到链尾（尾插法）
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
+                        // 如果链表长度大于了树化阈值8，则将链表转化为红黑树
                         if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
                             treeifyBin(tab, hash);
                         break;
                     }
+
+                    // 迭代中找到了相同key的Node对象，保留对该Node对象的引用到e
                     if (e.hash == hash &&
                         ((k = e.key) == key || (key != null && key.equals(k))))
                         break;
                     p = e;
                 }
             }
+
+            // 找到了相同key的Node对象，根据是否替换旧值，将Node对象的value替换为新值，并返回key对应的旧值value
             if (e != null) { // existing mapping for key
                 V oldValue = e.value;
                 if (!onlyIfAbsent || oldValue == null)
@@ -658,10 +713,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                 return oldValue;
             }
         }
-        ++modCount;
-        if (++size > threshold)
+        ++modCount; // 记录结构变化（只有新增一个Node对象时才会+1）
+        if (++size > threshold) // 添加新的Node后，如果HashMap中元素个数大于了阈值，则进行扩容。
             resize();
-        afterNodeInsertion(evict);
+        afterNodeInsertion(evict); // 什么也不做
         return null;
     }
 
